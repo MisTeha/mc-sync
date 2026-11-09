@@ -73,6 +73,11 @@
         path: "{{ world_dir }}"
         state: absent
 
+    - name: Make sure the folder the world goes in exists (e.g. if data/ was deleted)
+      ansible.builtin.file:
+        path: "{{ world_dir | dirname }}"
+        state: directory
+
     - name: Move the new world into place
       ansible.builtin.command: mv "{{ incoming_dir }}" "{{ world_dir }}"
       changed_when: true

@@ -1,12 +1,12 @@
 # mc-sync
 
 Move a Minecraft world between your Windows PC and a VPS with a double-click, and start/stop
-servers on the VPS from Discord.
+servers on the VPS from Discord (with a tap-friendly button panel, so it's easy from a phone).
 
 ```
 windows/   double-click scripts: pack + upload / download + unpack (thin PowerShell)
 vps/       Ansible playbooks that do the real work on the VPS (run locally there)
-bot/       Discord bot: /mc status, /mc start, /mc stop -> calls vps/server.yml
+bot/       Discord bot: button panel + /mc commands -> calls vps/server.yml
 ```
 
 Everything that changes the server lives in `vps/` as Ansible, so it reads top to bottom and you
@@ -77,6 +77,13 @@ world/server pair, copy a `.bat` and add `-World "Other" -Server creative` to it
    sudo systemctl daemon-reload && sudo systemctl enable --now mc-bot
    ```
    Guild ID: Discord settings → Advanced → Developer Mode, then right-click your server → Copy Server ID.
+5. In the channel you want it in, run `/mc panel` and pin the message it posts. That's the control
+   panel: a Start/Stop button per server that updates itself (it re-checks every minute, so changes
+   made by the world push/pull scripts show up too). Stop asks for confirmation first. Running
+   `/mc panel` again moves it; the old one is deleted. The bot needs Send Messages in that channel.
+
+   The panel shows up to 10 servers (a Discord limit on message size); the slash commands
+   `/mc status`, `/mc start` and `/mc stop` work for all of them and for anyone who prefers typing.
 
 ## Player data
 

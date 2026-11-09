@@ -1,0 +1,11 @@
+# Secrets and per-install state
+bot/.env
+bot/panel.json
+
+# Python
+bot/.venv/
+__pycache__/
+*.pyc
+
+# OS junk
+.DS_Store

@@ -1,0 +1,89 @@
+# Replace a server's world with an archive uploaded by push-world.ps1.
+#
+#   ansible-playbook world-push.yml -e server=survival -e archive=/tmp/mc-world-survival.tar.gz
+#
+# The server is stopped if needed, the upload is unpacked into a staging folder and its
+# player data is sorted out (see scripts/players.py), the old world is backed up and
+# swapped out, and the server is started again only if it was running before.
+
+- name: Push a world to a Minecraft server
+  hosts: localhost
+  gather_facts: false
+  vars:
+    project_dir: "{{ mc_root }}/{{ server }}"
+    world_dir: "{{ project_dir }}/{{ world_subdir }}"
+    incoming_dir: "{{ project_dir }}/.incoming-world"
+
+  tasks:
+    - name: Load server info
+      ansible.builtin.import_tasks: tasks/load-server.yml
+
+    - name: Install the player data tools
+      ansible.builtin.import_tasks: tasks/player-tools.yml
+
+    - name: Check that the uploaded archive exists
+      ansible.builtin.stat:
+        path: "{{ archive }}"
+      register: archive_stat
+
+    - name: Fail if there is no uploaded archive
+      ansible.builtin.assert:
+        that: archive_stat.stat.exists
+        fail_msg: "Uploaded archive not found at {{ archive }}"
+
+    - name: Stop the server
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_dir }}"
+        state: absent
+      when: was_running | bool
+
+    - name: Clear the staging folder
+      ansible.builtin.file:
+        path: "{{ incoming_dir }}"
+        state: absent
+
+    - name: Create the staging folder
+      ansible.builtin.file:
+        path: "{{ incoming_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Unpack the uploaded world into the staging folder
+      ansible.builtin.unarchive:
+        src: "{{ archive }}"
+        dest: "{{ incoming_dir }}"
+        remote_src: true
+
+    - name: Sort out player data (your inventory, and keep everyone else's)
+      ansible.builtin.command: >-
+        "{{ tools_venv }}/bin/python" "{{ playbook_dir }}/scripts/players.py"
+        push "{{ incoming_dir }}" "{{ world_dir }}"
+      register: players_report
+      changed_when: true
+
+    - name: Show what happened to each player
+      ansible.builtin.debug:
+        var: players_report.stdout_lines
+
+    - name: Back up the current world
+      ansible.builtin.import_tasks: tasks/backup-world.yml
+
+    - name: Delete the current world
+      ansible.builtin.file:
+        path: "{{ world_dir }}"
+        state: absent
+
+    - name: Move the new world into place
+      ansible.builtin.command: mv "{{ incoming_dir }}" "{{ world_dir }}"
+      changed_when: true
+
+    - name: Delete the uploaded archive
+      ansible.builtin.file:
+        path: "{{ archive }}"
+        state: absent
+
+    - name: Start the server again
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_dir }}"
+        state: present
+      when: was_running | bool

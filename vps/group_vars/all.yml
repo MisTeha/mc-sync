@@ -1,0 +1,17 @@
+# Settings shared by all playbooks. Any of these can be overridden with -e on the command line.
+
+# Each Minecraft server is a folder here with its own compose.yml, e.g. /opt/minecraft/survival
+mc_root: /opt/minecraft
+
+# Where the world lives inside a server folder (itzg/minecraft-server default with LEVEL=world)
+world_subdir: data/world
+
+# Snapshots taken before a world is replaced. Keep this OUTSIDE mc_root.
+backup_dir: /opt/minecraft-backups
+keep_backups: 5
+
+# Python virtualenv with nbtlib, used by scripts/players.py (created automatically)
+tools_venv: "{{ playbook_dir }}/.venv"
+
+# Only one server runs at a time: starting one stops the others (they usually share port 25565)
+exclusive: true

@@ -1,0 +1,59 @@
+# Pack a server's world for pull-world.ps1 to download into singleplayer.
+#
+#   ansible-playbook world-pull.yml -e server=survival -e archive=/tmp/mc-world-survival.tar.gz -e player=<your uuid>
+#
+# `player` becomes the singleplayer host with their server inventory (see scripts/players.py).
+# The server is stopped while packing (so no half-written files end up in the archive)
+# and started again only if it was running before. The live world is not modified.
+
+- name: Pull a world from a Minecraft server
+  hosts: localhost
+  gather_facts: false
+  vars:
+    project_dir: "{{ mc_root }}/{{ server }}"
+    world_dir: "{{ project_dir }}/{{ world_subdir }}"
+
+  tasks:
+    - name: Check that the player's UUID was given
+      ansible.builtin.assert:
+        that: player is defined and player | length > 0
+        fail_msg: "Pass -e player=<your Minecraft UUID>"
+
+    - name: Load server info
+      ansible.builtin.import_tasks: tasks/load-server.yml
+
+    - name: Install the player data tools
+      ansible.builtin.import_tasks: tasks/player-tools.yml
+
+    - name: Look up the world folder
+      ansible.builtin.stat:
+        path: "{{ world_dir }}"
+      register: world_stat
+
+    - name: Check that the server has a world
+      ansible.builtin.assert:
+        that: world_stat.stat.isdir | default(false)
+        fail_msg: "No world at {{ world_dir }}"
+
+    - name: Stop the server
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_dir }}"
+        state: absent
+      when: was_running | bool
+
+    - name: Pack the world, with you as the singleplayer host
+      ansible.builtin.command: >-
+        "{{ tools_venv }}/bin/python" "{{ playbook_dir }}/scripts/players.py"
+        pull "{{ world_dir }}" "{{ archive }}" "{{ player }}"
+      register: players_report
+      changed_when: true
+
+    - name: Show what happened
+      ansible.builtin.debug:
+        var: players_report.stdout_lines
+
+    - name: Start the server again
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_dir }}"
+        state: present
+      when: was_running | bool

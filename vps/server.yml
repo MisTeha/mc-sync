@@ -1,0 +1,43 @@
+# Start or stop a Minecraft server. Used by the Discord bot, but works by hand too:
+#
+#   ansible-playbook server.yml -e server=survival -e action=start
+#   ansible-playbook server.yml -e server=survival -e action=stop
+#
+# With `exclusive: true` (see group_vars/all.yml), starting a server stops all the others first.
+
+- name: Start or stop a Minecraft server
+  hosts: localhost
+  gather_facts: false
+  vars:
+    project_dir: "{{ mc_root }}/{{ server }}"
+
+  tasks:
+    - name: Check that a valid action was given
+      ansible.builtin.assert:
+        that: action is defined and action in ['start', 'stop']
+        fail_msg: "Pass -e action=start or -e action=stop"
+
+    - name: Load server info
+      ansible.builtin.import_tasks: tasks/load-server.yml
+
+    - name: Find all Minecraft servers
+      ansible.builtin.find:
+        paths: "{{ mc_root }}"
+        patterns: compose.yml,compose.yaml,docker-compose.yml,docker-compose.yaml
+        recurse: true
+        depth: 2
+      register: compose_files
+
+    - name: Stop the other servers
+      community.docker.docker_compose_v2:
+        project_src: "{{ item }}"
+        state: absent
+      loop: "{{ compose_files.files | map(attribute='path') | map('dirname') | reject('equalto', project_dir) | list }}"
+      loop_control:
+        label: "{{ item | basename }}"
+      when: action == 'start' and exclusive | bool
+
+    - name: Start or stop the server
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_dir }}"
+        state: "{{ 'present' if action == 'start' else 'absent' }}"

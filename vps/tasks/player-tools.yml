@@ -1,0 +1,8 @@
+# scripts/players.py reads and writes Minecraft's NBT files with the nbtlib library.
+# Install it into a small virtualenv next to the playbooks (only does work the first time).
+
+- name: Make sure the player data tools are installed
+  ansible.builtin.pip:
+    name: nbtlib
+    virtualenv: "{{ tools_venv }}"
+    virtualenv_command: python3 -m venv

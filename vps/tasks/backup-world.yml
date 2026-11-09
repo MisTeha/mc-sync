@@ -1,0 +1,33 @@
+# Snapshot world_dir into backup_dir, then keep only the newest `keep_backups` snapshots.
+
+- name: Look for an existing world
+  ansible.builtin.stat:
+    path: "{{ world_dir }}"
+  register: world_stat
+
+- name: Make sure the backup folder exists
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Back up the current world
+  ansible.builtin.command: >-
+    tar -czf "{{ backup_dir }}/{{ server }}-{{ now(fmt='%Y-%m-%d_%H%M%S') }}.tar.gz"
+    -C "{{ world_dir }}" .
+  changed_when: true
+  when: world_stat.stat.exists
+
+- name: Find this server's backups
+  ansible.builtin.find:
+    paths: "{{ backup_dir }}"
+    patterns: "{{ server }}-*.tar.gz"
+  register: backups
+
+- name: Delete old backups beyond keep_backups
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ (backups.files | sort(attribute='mtime', reverse=true))[keep_backups | int:] }}"
+  loop_control:
+    label: "{{ item.path | basename }}"

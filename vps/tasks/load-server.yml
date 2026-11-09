@@ -1,0 +1,30 @@
+# Shared by every playbook: validates `server`, checks its folder exists,
+# and sets `was_running` so we can put the server back the way we found it.
+
+- name: Check that a valid server name was given
+  ansible.builtin.assert:
+    that:
+      - server is defined
+      - server is match('^[A-Za-z0-9][A-Za-z0-9_.-]*$')
+    fail_msg: "Pass the server folder name, e.g. -e server=survival"
+
+- name: Look up the server folder
+  ansible.builtin.stat:
+    path: "{{ project_dir }}"
+  register: project_stat
+
+- name: Check that the server folder exists
+  ansible.builtin.assert:
+    that: project_stat.stat.isdir | default(false)
+    fail_msg: "No server folder at {{ project_dir }}"
+
+- name: Check whether the server is running
+  ansible.builtin.command: docker compose ps --status running --quiet
+  args:
+    chdir: "{{ project_dir }}"
+  register: compose_ps
+  changed_when: false
+
+- name: Remember whether it was running
+  ansible.builtin.set_fact:
+    was_running: "{{ compose_ps.stdout | trim | length > 0 }}"

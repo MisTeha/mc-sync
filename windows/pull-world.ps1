@@ -23,7 +23,7 @@ $worldPath = Join-Path $SavesDir $World
 $staging   = Join-Path $StagingDir $World
 
 # Fail early, before touching the server, if something is missing or the world is in use
-Assert-Rclone
+Assert-SyncSetup
 if (Test-Path $worldPath) { Assert-WorldClosed $worldPath }
 $player = Get-PlayerUuid
 

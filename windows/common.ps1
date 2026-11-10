@@ -44,9 +44,16 @@ function Get-PlayerUuid {
     throw "Couldn't find your Minecraft account in the launcher files. Set `$PlayerUuid in config.ps1."
 }
 
-function Assert-Rclone {
+function Assert-SyncSetup {
     if (-not (Get-Command $Rclone -ErrorAction SilentlyContinue)) {
         throw "rclone not found. Install it with 'winget install Rclone.Rclone', then open a new window."
+    }
+    # These must be set: with an empty $SyncSubdir the sync would target the whole server folder,
+    # and a sync makes its target an exact copy, deleting everything else in it.
+    foreach ($name in "McRoot", "SyncSubdir", "StagingDir") {
+        if (-not (Get-Variable $name -ValueOnly -ErrorAction SilentlyContinue)) {
+            throw "`$$name is not set. Copy the rclone settings from the repo's config.ps1 into yours."
+        }
     }
 }
 
@@ -58,9 +65,15 @@ function Get-RemoteWorld([string]$Server) {
 # Make $To an exact copy of $From, transferring only files that differ (by size and modification
 # time), several at once. rclone connects through your normal ssh, so the $VpsHost alias, keys
 # and ~/.ssh/config all apply. session.lock is Minecraft's "world is open" marker: never synced.
+#
+# The --sftp-*sum-command none flags stop rclone from running commands on the VPS (it only uses
+# SFTP). Windows' ssh.exe never tells a remote command that input has ended, so rclone's
+# "md5sum" check would wait forever and the sync would hang at 0 bytes. SSH already protects the
+# data in transit, and rclone still checks every file's size.
 function Sync-World([string]$From, [string]$To) {
     & $Rclone sync $From $To `
         --sftp-ssh "ssh $VpsHost" --sftp-shell-type unix `
+        --sftp-md5sum-command none --sftp-sha1sum-command none `
         --exclude session.lock `
         --transfers $RcloneTransfers `
         --progress --log-level ERROR

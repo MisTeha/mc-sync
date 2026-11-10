@@ -20,7 +20,7 @@ $worldPath = Join-Path $SavesDir $World
 
 Write-Step "Uploading changes in '$World'"
 if (-not (Test-Path $worldPath)) { throw "World folder not found: $worldPath" }
-Assert-Rclone
+Assert-SyncSetup
 Assert-WorldClosed $worldPath
 Sync-World $worldPath (Get-RemoteWorld $Server)
 Assert-Ok "Upload"

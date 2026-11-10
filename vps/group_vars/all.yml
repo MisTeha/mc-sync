@@ -6,7 +6,12 @@ mc_root: /opt/minecraft
 # Where the world lives inside a server folder (itzg/minecraft-server default with LEVEL=world)
 world_subdir: data/world
 
-# Snapshots taken before a world is replaced. Keep this OUTSIDE mc_root.
+# Where push/pull sync worlds with your PC (rclone), inside each server folder. It holds the
+# world as your PC last had it, so only changes travel. Same name as in windows/config.ps1.
+sync_subdir: .sync-world
+
+# Old worlds, moved here when a push replaces them. Keep this OUTSIDE mc_root, and on the same
+# disk so moving a world here is instant.
 backup_dir: /opt/minecraft-backups
 keep_backups: 5
 

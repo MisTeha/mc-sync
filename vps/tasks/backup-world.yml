@@ -1,4 +1,6 @@
-# Snapshot world_dir into backup_dir, then keep only the newest `keep_backups` snapshots.
+# Move world_dir into backup_dir as <server>-<date>, then keep only the newest `keep_backups`.
+# Moving is instant when backup_dir is on the same disk, and the world is about to be replaced
+# anyway. Each backup is a plain world folder: to restore one, move it back to world_dir.
 
 - name: Look for an existing world
   ansible.builtin.stat:
@@ -11,23 +13,26 @@
     state: directory
     mode: "0755"
 
-- name: Back up the current world
+- name: Move the current world into the backups
   ansible.builtin.command: >-
-    tar -czf "{{ backup_dir }}/{{ server }}-{{ now(fmt='%Y-%m-%d_%H%M%S') }}.tar.gz"
-    -C "{{ world_dir }}" .
+    mv "{{ world_dir }}" "{{ backup_dir }}/{{ server }}-{{ now(fmt='%Y-%m-%d_%H%M%S') }}"
   changed_when: true
   when: world_stat.stat.exists
 
+# Matches the exact name format, so "survival" never picks up "survival-2"'s backups
 - name: Find this server's backups
   ansible.builtin.find:
     paths: "{{ backup_dir }}"
-    patterns: "{{ server }}-*.tar.gz"
+    file_type: directory
+    use_regex: true
+    patterns: '^{{ server | regex_escape }}-\d{4}-\d{2}-\d{2}_\d{6}$'
   register: backups
 
+# Sorted by name, which ends in the date (a moved folder's modification time isn't reliable)
 - name: Delete old backups beyond keep_backups
   ansible.builtin.file:
     path: "{{ item.path }}"
     state: absent
-  loop: "{{ (backups.files | sort(attribute='mtime', reverse=true))[keep_backups | int:] }}"
+  loop: "{{ (backups.files | sort(attribute='path', reverse=true))[keep_backups | int:] }}"
   loop_control:
     label: "{{ item.path | basename }}"

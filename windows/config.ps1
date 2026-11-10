@@ -23,5 +23,20 @@ $PlaybookDir = "/opt/mc-sync/vps"
 # use the full path, e.g. "~/.local/bin/ansible-playbook" (non-interactive SSH may not load your PATH)
 $AnsiblePlaybook = "ansible-playbook"
 
+# Where Minecraft servers live on the VPS, and the sync folder inside each one
+# (same as mc_root and sync_subdir in vps/group_vars/all.yml)
+$McRoot     = "/opt/minecraft"
+$SyncSubdir = ".sync-world"
+
+# rclone transfers only the files that changed. Install it with: winget install Rclone.Rclone
+# (put the full path to rclone.exe here if it isn't found)
+$Rclone = "rclone"
+# How many files are transferred at once. More helps a lot when the VPS is far away.
+$RcloneTransfers = 8
+
 # Where pull-world.ps1 moves your old local copy before replacing it
 $LocalBackupDir = "$MinecraftDir\world-backups"
+
+# Where pull-world.ps1 downloads to before swapping the world in. Must be on the same drive as
+# your saves folder, but not inside it (Minecraft would list it as a broken world).
+$StagingDir = "$MinecraftDir\mc-sync-staging"

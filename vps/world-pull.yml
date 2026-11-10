@@ -1,10 +1,12 @@
-# Pack a server's world for pull-world.ps1 to download into singleplayer.
+# Prepare a server's world for pull-world.ps1 to download into singleplayer.
 #
-#   ansible-playbook world-pull.yml -e server=survival -e archive=/tmp/mc-world-survival.tar.gz -e player=<your uuid>
+#   ansible-playbook world-pull.yml -e server=survival -e player=<your uuid>
 #
-# `player` becomes the singleplayer host with their server inventory (see scripts/players.py).
-# The server is stopped while packing (so no half-written files end up in the archive)
-# and started again only if it was running before. The live world is not modified.
+# The world is copied into <server>/.sync-world, with the server stopped just for the copy (so
+# no half-written files end up in it) and started again right after if it was running. Then
+# `player` is made the singleplayer host in that copy, with their server inventory (see
+# scripts/players.py). pull-world.ps1 syncs the folder down with rclone, which only downloads
+# what differs from your local copy. The live world is not modified.
 
 - name: Pull a world from a Minecraft server
   hosts: localhost
@@ -12,6 +14,7 @@
   vars:
     project_dir: "{{ mc_root }}/{{ server }}"
     world_dir: "{{ project_dir }}/{{ world_subdir }}"
+    sync_dir: "{{ project_dir }}/{{ sync_subdir }}"
 
   tasks:
     - name: Check that the player's UUID was given
@@ -41,19 +44,29 @@
         state: absent
       when: was_running | bool
 
-    - name: Pack the world, with you as the singleplayer host
-      ansible.builtin.command: >-
-        "{{ tools_venv }}/bin/python" "{{ playbook_dir }}/scripts/players.py"
-        pull "{{ world_dir }}" "{{ archive }}" "{{ player }}"
-      register: players_report
-      changed_when: true
+    - name: Clear the previous copy
+      ansible.builtin.file:
+        path: "{{ sync_dir }}"
+        state: absent
 
-    - name: Show what happened
-      ansible.builtin.debug:
-        var: players_report.stdout_lines
+    # cp -a keeps modification times, which is how rclone tells unchanged files apart
+    - name: Copy the world
+      ansible.builtin.command: cp -a "{{ world_dir }}" "{{ sync_dir }}"
+      changed_when: true
 
     - name: Start the server again
       community.docker.docker_compose_v2:
         project_src: "{{ project_dir }}"
         state: present
       when: was_running | bool
+
+    - name: Make you the singleplayer host in the copy
+      ansible.builtin.command: >-
+        "{{ tools_venv }}/bin/python" "{{ playbook_dir }}/scripts/players.py"
+        pull "{{ sync_dir }}" "{{ player }}"
+      register: players_report
+      changed_when: true
+
+    - name: Show what happened
+      ansible.builtin.debug:
+        var: players_report.stdout_lines

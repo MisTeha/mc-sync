@@ -1,10 +1,14 @@
-# Replace a server's world with an archive uploaded by push-world.ps1.
+# Replace a server's world with the one push-world.ps1 uploaded.
 #
-#   ansible-playbook world-push.yml -e server=survival -e archive=/tmp/mc-world-survival.tar.gz
+#   ansible-playbook world-push.yml -e server=survival
 #
-# The server is stopped if needed, the upload is unpacked into a staging folder and its
-# player data is sorted out (see scripts/players.py), the old world is backed up and
-# swapped out, and the server is started again only if it was running before.
+# push-world.ps1 first syncs your local world into <server>/.sync-world with rclone, which only
+# sends the files that changed since the last push or pull. This playbook then stops the server
+# if needed, copies that upload into a staging folder and sorts out its player data (see
+# scripts/players.py), moves the old world into the backups, puts the new one in place, and
+# starts the server again only if it was running before.
+#
+# .sync-world itself is left exactly as uploaded: it's what the next sync compares against.
 
 - name: Push a world to a Minecraft server
   hosts: localhost
@@ -12,6 +16,7 @@
   vars:
     project_dir: "{{ mc_root }}/{{ server }}"
     world_dir: "{{ project_dir }}/{{ world_subdir }}"
+    sync_dir: "{{ project_dir }}/{{ sync_subdir }}"
     incoming_dir: "{{ project_dir }}/.incoming-world"
 
   tasks:
@@ -21,15 +26,15 @@
     - name: Install the player data tools
       ansible.builtin.import_tasks: tasks/player-tools.yml
 
-    - name: Check that the uploaded archive exists
+    - name: Look for the uploaded world
       ansible.builtin.stat:
-        path: "{{ archive }}"
-      register: archive_stat
+        path: "{{ sync_dir }}/level.dat"
+      register: upload_stat
 
-    - name: Fail if there is no uploaded archive
+    - name: Fail if nothing was uploaded
       ansible.builtin.assert:
-        that: archive_stat.stat.exists
-        fail_msg: "Uploaded archive not found at {{ archive }}"
+        that: upload_stat.stat.exists
+        fail_msg: "No uploaded world in {{ sync_dir }}. push-world.ps1 uploads it before running this."
 
     - name: Stop the server
       community.docker.docker_compose_v2:
@@ -42,17 +47,9 @@
         path: "{{ incoming_dir }}"
         state: absent
 
-    - name: Create the staging folder
-      ansible.builtin.file:
-        path: "{{ incoming_dir }}"
-        state: directory
-        mode: "0755"
-
-    - name: Unpack the uploaded world into the staging folder
-      ansible.builtin.unarchive:
-        src: "{{ archive }}"
-        dest: "{{ incoming_dir }}"
-        remote_src: true
+    - name: Copy the upload into the staging folder
+      ansible.builtin.command: cp -a "{{ sync_dir }}" "{{ incoming_dir }}"
+      changed_when: true
 
     - name: Sort out player data (your inventory, and keep everyone else's)
       ansible.builtin.command: >-
@@ -65,13 +62,8 @@
       ansible.builtin.debug:
         var: players_report.stdout_lines
 
-    - name: Back up the current world
+    - name: Move the current world into the backups
       ansible.builtin.import_tasks: tasks/backup-world.yml
-
-    - name: Delete the current world
-      ansible.builtin.file:
-        path: "{{ world_dir }}"
-        state: absent
 
     - name: Make sure the folder the world goes in exists (e.g. if data/ was deleted)
       ansible.builtin.file:
@@ -81,11 +73,6 @@
     - name: Move the new world into place
       ansible.builtin.command: mv "{{ incoming_dir }}" "{{ world_dir }}"
       changed_when: true
-
-    - name: Delete the uploaded archive
-      ansible.builtin.file:
-        path: "{{ archive }}"
-        state: absent
 
     - name: Start the server again
       community.docker.docker_compose_v2:

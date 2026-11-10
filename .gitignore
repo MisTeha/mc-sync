@@ -9,3 +9,6 @@ __pycache__/
 
 # OS junk
 .DS_Store
+
+# Python venvs the playbooks create
+vps/.venv/

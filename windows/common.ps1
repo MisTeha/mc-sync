@@ -43,3 +43,25 @@ function Get-PlayerUuid {
     }
     throw "Couldn't find your Minecraft account in the launcher files. Set `$PlayerUuid in config.ps1."
 }
+
+function Assert-Rclone {
+    if (-not (Get-Command $Rclone -ErrorAction SilentlyContinue)) {
+        throw "rclone not found. Install it with 'winget install Rclone.Rclone', then open a new window."
+    }
+}
+
+# rclone's name for a server's sync folder on the VPS
+function Get-RemoteWorld([string]$Server) {
+    return ":sftp:$McRoot/$Server/$SyncSubdir"
+}
+
+# Make $To an exact copy of $From, transferring only files that differ (by size and modification
+# time), several at once. rclone connects through your normal ssh, so the $VpsHost alias, keys
+# and ~/.ssh/config all apply. session.lock is Minecraft's "world is open" marker: never synced.
+function Sync-World([string]$From, [string]$To) {
+    & $Rclone sync $From $To `
+        --sftp-ssh "ssh $VpsHost" --sftp-shell-type unix `
+        --exclude session.lock `
+        --transfers $RcloneTransfers `
+        --progress --log-level ERROR
+}

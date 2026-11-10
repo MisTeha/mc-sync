@@ -17,16 +17,15 @@ always stored as per-player files, so they move like server players do.
         - every other player: the newer copy wins, and players that only exist on
           the server are kept, so nobody's inventory is lost
 
-  players.py pull <server_world> <archive> <player_uuid>
-      Pack the server's world so that <player_uuid> is the singleplayer host,
-      with their server inventory. Everyone else's files come along unchanged.
+  players.py pull <world_copy> <player_uuid>
+      Edit a copy of the server's world (never the live one) so that <player_uuid> is
+      the singleplayer host, with their server inventory. Everyone else's files stay as
+      they are.
 """
 
 import shutil
 import struct
 import sys
-import tarfile
-import tempfile
 import uuid
 from pathlib import Path
 
@@ -150,16 +149,16 @@ def push(incoming: Path, server_world: Path):
 
 # ---- pull: server world -> singleplayer ----
 
-def pull(server_world: Path, archive: Path, player: str):
+def pull(world: Path, player: str):
     player = str(uuid.UUID(player))  # normalises "abcd..." and "ab-cd-..." forms
-    level = nbtlib.load(server_world / "level.dat")
-    layout = layout_of(server_world, level)
+    level = nbtlib.load(world / "level.dat")
+    layout = layout_of(world, level)
     data = level["Data"]
-    player_dat = player_file(server_world, layout, "data", player)
+    player_dat = player_file(world, layout, "data", player)
 
     # Make `player` the singleplayer host. Without this, the old format would load whatever
     # stale Player tag is in level.dat (possibly someone else's) instead of their inventory.
-    if is_new_format(server_world, level):
+    if is_new_format(world, level):
         data["singleplayer_uuid"] = ints_from_uuid(player)
     elif player_dat.exists():
         data["Player"] = Compound(nbtlib.load(player_dat))
@@ -171,24 +170,19 @@ def pull(server_world: Path, archive: Path, player: str):
     else:
         print(f"{player}: you haven't played on this server, so you'll start fresh at spawn")
 
-    # Pack the world with the edited level.dat. The live level.dat is never changed.
-    # level.dat_old is left out so a stale host can't come back from it; session.lock isn't needed.
-    skip = {"level.dat", "level.dat_old", "session.lock"}
-    with tempfile.TemporaryDirectory() as tmp, tarfile.open(archive, "w:gz", compresslevel=6) as tar:
-        edited_level = Path(tmp) / "level.dat"
-        level.save(edited_level)
-        for path in sorted(server_world.iterdir()):
-            if path.name not in skip:
-                tar.add(path, arcname=path.name)
-        tar.add(edited_level, arcname="level.dat")
-    print(f"Packed {server_world} -> {archive}")
+    # This is a copy, so editing it in place is fine. level.dat_old goes so a stale host
+    # can't come back from it (the download then removes it locally too).
+    level.save(world / "level.dat")
+    for name in ("level.dat_old", "session.lock"):
+        (world / name).unlink(missing_ok=True)
+    print(f"Prepared {world} for download")
 
 
 if __name__ == "__main__":
     match sys.argv[1:]:
         case ["push", incoming, server_world]:
             push(Path(incoming), Path(server_world))
-        case ["pull", server_world, archive, player]:
-            pull(Path(server_world), Path(archive), player)
+        case ["pull", world, player]:
+            pull(Path(world), player)
         case _:
             sys.exit(__doc__)
